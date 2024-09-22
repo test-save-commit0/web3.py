@@ -1,10 +1,9 @@
-from web3._utils.compat import (
-    Literal,
-)
+from web3._utils.compat import Literal
 
 
 class Empty:
-    def __bool__(self) -> Literal[False]:
+
+    def __bool__(self) ->Literal[False]:
         return False
 
 
