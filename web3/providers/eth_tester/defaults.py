@@ -21,12 +21,13 @@ null_if_filter_not_found = null_if_excepts(FilterNotFound)
 null_if_indexerror = null_if_excepts(IndexError)
 
 
-def _generate_random_private_key() ->HexStr:
+def _generate_random_private_key() -> HexStr:
     """
     WARNING: This is not a secure way to generate private keys and should only
     be used for testing purposes.
     """
-    pass
+    private_key = '0x' + ''.join([random.choice('0123456789abcdef') for _ in range(64)])
+    return HexStr(private_key)
 
 
 API_ENDPOINTS = {'web3': {'clientVersion': client_version, 'sha3': compose(
