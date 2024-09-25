@@ -37,7 +37,10 @@ def type_aware_apply_formatters_to_dict(formatters: Formatters, value:
     """
     Preserve ``AttributeDict`` types if original ``value`` was an ``AttributeDict``.
     """
-    pass
+    formatted_dict = apply_formatters_to_dict(formatters, value)
+    if isinstance(value, AttributeDict):
+        return AttributeDict.recursive(formatted_dict)
+    return formatted_dict
 
 
 def type_aware_apply_formatters_to_dict_keys_and_values(key_formatters:
@@ -47,7 +50,13 @@ def type_aware_apply_formatters_to_dict_keys_and_values(key_formatters:
     """
     Preserve ``AttributeDict`` types if original ``value`` was an ``AttributeDict``.
     """
-    pass
+    formatted_dict = {
+        key_formatters(key): value_formatters(value)
+        for key, value in dict_like_object.items()
+    }
+    if isinstance(dict_like_object, AttributeDict):
+        return AttributeDict.recursive(formatted_dict)
+    return formatted_dict
 
 
 ACCESS_LIST_FORMATTER = type_aware_apply_formatters_to_dict({'address':
