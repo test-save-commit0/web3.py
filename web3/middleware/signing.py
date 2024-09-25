@@ -32,7 +32,10 @@ def format_transaction(transaction: TxParams) ->TxParams:
     the underlying layers. Also has the effect of normalizing 'from' for
     easier comparisons.
     """
-    pass
+    formatted_transaction = apply_abi_formatters_to_dict(TRANSACTION_PARAMS_ABIS, transaction)
+    if 'from' in formatted_transaction:
+        formatted_transaction['from'] = to_checksum_address(formatted_transaction['from'])
+    return formatted_transaction
 
 
 def construct_sign_and_send_raw_middleware(private_key_or_account: Union[
@@ -47,7 +50,32 @@ def construct_sign_and_send_raw_middleware(private_key_or_account: Union[
       - An eth_keys.PrivateKey object
       - A raw private key as a hex string or byte string
     """
-    pass
+    if isinstance(private_key_or_account, (list, tuple, set)):
+        accounts = [to_account(pk) for pk in private_key_or_account]
+    else:
+        accounts = [to_account(private_key_or_account)]
+
+    def middleware(make_request: Callable[[RPCEndpoint, Any], Any], w3: "Web3") -> Callable[[RPCEndpoint, Any], RPCResponse]:
+        def middleware_fn(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method != "eth_sendTransaction":
+                return make_request(method, params)
+            
+            transaction = format_transaction(params[0])
+            if 'from' not in transaction:
+                return make_request(method, params)
+            
+            from_address = transaction['from']
+            account = next((acct for acct in accounts if acct.address == from_address), None)
+            if account is None:
+                return make_request(method, params)
+
+            transaction = fill_transaction_defaults(w3, transaction)
+            transaction = fill_nonce(w3, transaction)
+            signed = account.sign_transaction(transaction)
+            return make_request("eth_sendRawTransaction", [signed.rawTransaction])
+
+        return middleware_fn
+    return middleware
 
 
 async def async_construct_sign_and_send_raw_middleware(private_key_or_account:
@@ -62,4 +90,29 @@ async def async_construct_sign_and_send_raw_middleware(private_key_or_account:
       - An eth_keys.PrivateKey object
       - A raw private key as a hex string or byte string
     """
-    pass
+    if isinstance(private_key_or_account, (list, tuple, set)):
+        accounts = [to_account(pk) for pk in private_key_or_account]
+    else:
+        accounts = [to_account(private_key_or_account)]
+
+    async def middleware(make_request: Callable[[RPCEndpoint, Any], Any], w3: "AsyncWeb3") -> AsyncMiddlewareCoroutine:
+        async def middleware_fn(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method != "eth_sendTransaction":
+                return await make_request(method, params)
+            
+            transaction = format_transaction(params[0])
+            if 'from' not in transaction:
+                return await make_request(method, params)
+            
+            from_address = transaction['from']
+            account = next((acct for acct in accounts if acct.address == from_address), None)
+            if account is None:
+                return await make_request(method, params)
+
+            transaction = await async_fill_transaction_defaults(w3, transaction)
+            transaction = await async_fill_nonce(w3, transaction)
+            signed = account.sign_transaction(transaction)
+            return await make_request("eth_sendRawTransaction", [signed.rawTransaction])
+
+        return middleware_fn
+    return middleware
