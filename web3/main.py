@@ -59,14 +59,32 @@ class BaseWeb3:
         Takes list of abi_types as inputs -- `[uint24, int8[], bool]`
         and list of corresponding values  -- `[20, [-1, 5, 0], True]`
         """
-        pass
+        if len(abi_types) != len(values):
+            raise ValueError("Length mismatch between abi_types and values")
+        hex_data = add_0x_prefix(''.join(
+            remove_0x_prefix(hex_encode_abi_type(abi_type, value))
+            for abi_type, value in zip(abi_types, values)
+        ))
+        return eth_utils_keccak(hexstr=hex_data)
 
     def attach_modules(self, modules: Optional[Dict[str, Union[Type[Module],
         Sequence[Any]]]]) ->None:
         """
         Attach modules to the `Web3` instance.
         """
-        pass
+        if modules is not None:
+            for module_name, module_info in modules.items():
+                if isinstance(module_info, Sequence):
+                    if len(module_info) == 2:
+                        module_class, module_args = module_info
+                        _attach_modules(self, ((module_name, module_class(*module_args)),))
+                    elif len(module_info) == 1:
+                        module_class = module_info[0]
+                        _attach_modules(self, ((module_name, module_class(self)),))
+                    else:
+                        raise ValueError("Module sequence must have 1 or 2 elements")
+                else:
+                    _attach_modules(self, ((module_name, module_info(self)),))
 
 
 class Web3(BaseWeb3):
@@ -118,7 +136,7 @@ class AsyncWeb3(BaseWeb3):
         Establish a persistent connection via websockets to a websocket provider using
         a ``PersistentConnectionProvider`` instance.
         """
-        pass
+        return _PersistentConnectionWeb3(provider, middlewares, modules, external_modules, ens)
 
 
 class _PersistentConnectionWeb3(AsyncWeb3):
