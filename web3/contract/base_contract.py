@@ -213,7 +213,18 @@ class BaseContract:
 
         :param data: defaults to function selector
         """
-        pass
+        if args is None:
+            args = tuple()
+        if kwargs is None:
+            kwargs = {}
+
+        fn_abi = find_matching_fn_abi(cls.abi, fn_name, args, kwargs)
+        arguments = merge_args_and_kwargs(fn_abi, args, kwargs)
+
+        if data is None:
+            data = add_0x_prefix(function_abi_to_4byte_selector(fn_abi))
+
+        return add_0x_prefix(encode_abi(cls.w3, fn_abi, arguments, data))
     _return_data_normalizers: Tuple[Callable[..., Any], ...] = tuple()
 
 
