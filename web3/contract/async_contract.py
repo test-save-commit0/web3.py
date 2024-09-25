@@ -86,7 +86,33 @@ class AsyncContractEvent(BaseContractEvent):
           same time as fromBlock or toBlock
         :yield: Tuple of :class:`AttributeDict` instances
         """
-        pass
+        if block_hash is not None and (fromBlock is not None or toBlock is not None):
+            raise ValueError("Cannot set both block_hash and fromBlock/toBlock")
+
+        abi = self._get_event_abi()
+        argument_filters = argument_filters or {}
+
+        if fromBlock is None:
+            fromBlock = "latest"
+        if toBlock is None:
+            toBlock = "latest"
+
+        # Construct the filter
+        filter_params = {
+            "address": self.address,
+            "topics": self.get_event_topics(argument_filters),
+        }
+
+        if block_hash is not None:
+            filter_params["blockHash"] = block_hash
+        else:
+            filter_params["fromBlock"] = fromBlock
+            filter_params["toBlock"] = toBlock
+
+        logs = await self.w3.eth.get_logs(filter_params)
+
+        # Convert raw log data into Python objects
+        return [get_event_data(self.w3.codec, abi, entry) for entry in logs]
 
     @combomethod
     async def create_filter(self, *, argument_filters: Optional[Dict[str,
@@ -96,7 +122,26 @@ class AsyncContractEvent(BaseContractEvent):
         """
         Create filter object that tracks logs emitted by this contract event.
         """
-        pass
+        abi = self._get_event_abi()
+        self._validate_filter_params(argument_filters)
+
+        _filters = dict(**argument_filters) if argument_filters else {}
+
+        data_filter_set, event_filter_params = construct_event_filter_params(
+            abi,
+            self.w3.codec,
+            contract_address=self.address,
+            argument_filters=_filters,
+            fromBlock=fromBlock,
+            toBlock=toBlock,
+            address=address,
+            topics=topics,
+        )
+
+        filter_builder = AsyncEventFilterBuilder(self.w3, self.address, self._get_event_abi())
+        return await filter_builder.create_filter(
+            data_filter_set, event_filter_params
+        )
 
 
 class AsyncContractEvents(BaseContractEvents):
@@ -152,7 +197,24 @@ class AsyncContractFunction(BaseContractFunction):
         :return: ``Caller`` object that has contract public functions
             and variables exposed as Python methods
         """
-        pass
+        call_transaction = self._get_call_txn(transaction)
+
+        block_id = await async_parse_block_identifier(self.w3, block_identifier)
+
+        return await async_call_contract_function(
+            self.w3,
+            self.address,
+            self._return_data_normalizers,
+            self.function_identifier,
+            call_transaction,
+            block_id,
+            self.contract_abi,
+            self.abi,
+            state_override,
+            ccip_read_enabled,
+            *self.args,
+            **self.kwargs
+        )
 
 
 class AsyncContractFunctions(BaseContractFunctions):
@@ -213,7 +275,13 @@ class AsyncContract(BaseContract):
         :param kwargs: The contract constructor arguments as keyword arguments
         :return: a contract constructor object
         """
-        pass
+        if cls.bytecode is None:
+            raise ValueError(
+                "Cannot call constructor on a contract that does not have 'bytecode' associated "
+                "with it"
+            )
+
+        return AsyncContractConstructor(cls.w3, cls.abi, cls.bytecode, *args, **kwargs)
 
 
 class AsyncContractCaller(BaseContractCaller):
@@ -260,4 +328,20 @@ class AsyncContractConstructor(BaseContractConstructor):
         """
         Build the transaction dictionary without sending
         """
-        pass
+        if transaction is None:
+            transaction = {}
+
+        defaults = await async_get_transaction_defaults(self.w3, transaction)
+
+        if self.address is not None:
+            defaults['to'] = self.address
+
+        if self.w3.eth.default_account is not empty:
+            defaults['from'] = self.w3.eth.default_account
+
+        if 'data' in defaults:
+            raise ValueError("Cannot set data in constructor transaction")
+
+        defaults['data'] = self._encode_data()
+
+        return await async_fill_transaction_defaults(self.w3, defaults)
