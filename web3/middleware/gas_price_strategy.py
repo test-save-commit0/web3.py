@@ -18,7 +18,32 @@ def gas_price_strategy_middleware(make_request: Callable[[RPCEndpoint, Any],
 
     - Validates transaction params against legacy and dynamic fee txn values.
     """
-    pass
+    def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+        if method != 'eth_sendTransaction':
+            return make_request(method, params)
+
+        transaction = params[0]
+        
+        # Validate transaction params
+        if any_in_dict(DYNAMIC_FEE_TXN_PARAMS, transaction) and any_in_dict(['gasPrice'], transaction):
+            raise TransactionTypeMismatch("You cannot use legacy and EIP-1559 transaction parameters at the same time")
+        
+        if none_in_dict(DYNAMIC_FEE_TXN_PARAMS, transaction) and 'gasPrice' not in transaction:
+            if w3.eth.gas_price_strategy:
+                gas_price_strategy = w3.eth.gas_price_strategy
+                gas_price = gas_price_strategy(w3, transaction)
+                transaction = assoc(transaction, 'gasPrice', gas_price)
+            else:
+                raise InvalidTransaction("Gas price strategy not set and gasPrice not provided")
+
+        # Convert values to hex if they are integers
+        for key in ['gasPrice', 'maxFeePerGas', 'maxPriorityFeePerGas']:
+            if key in transaction:
+                transaction[key] = to_hex_if_integer(transaction[key])
+
+        return make_request(method, [transaction])
+
+    return middleware
 
 
 async def async_gas_price_strategy_middleware(make_request: Callable[[
@@ -30,4 +55,29 @@ async def async_gas_price_strategy_middleware(make_request: Callable[[
 
     - Validates transaction params against legacy and dynamic fee txn values.
     """
-    pass
+    async def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+        if method != 'eth_sendTransaction':
+            return await make_request(method, params)
+
+        transaction = params[0]
+        
+        # Validate transaction params
+        if any_in_dict(DYNAMIC_FEE_TXN_PARAMS, transaction) and any_in_dict(['gasPrice'], transaction):
+            raise TransactionTypeMismatch("You cannot use legacy and EIP-1559 transaction parameters at the same time")
+        
+        if none_in_dict(DYNAMIC_FEE_TXN_PARAMS, transaction) and 'gasPrice' not in transaction:
+            if async_w3.eth.gas_price_strategy:
+                gas_price_strategy = async_w3.eth.gas_price_strategy
+                gas_price = await gas_price_strategy(async_w3, transaction)
+                transaction = assoc(transaction, 'gasPrice', gas_price)
+            else:
+                raise InvalidTransaction("Gas price strategy not set and gasPrice not provided")
+
+        # Convert values to hex if they are integers
+        for key in ['gasPrice', 'maxFeePerGas', 'maxPriorityFeePerGas']:
+            if key in transaction:
+                transaction[key] = to_hex_if_integer(transaction[key])
+
+        return await make_request(method, [transaction])
+
+    return middleware
