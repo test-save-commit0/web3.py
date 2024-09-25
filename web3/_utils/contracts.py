@@ -23,7 +23,23 @@ def extract_argument_types(*args: Sequence[Any]) ->str:
     Takes a list of arguments and returns a string representation of the argument types,
     appropriately collapsing `tuple` types into the respective nested types.
     """
-    pass
+    def get_type(arg):
+        if isinstance(arg, tuple):
+            return f"({','.join(get_type(a) for a in arg)})"
+        elif isinstance(arg, list):
+            return f"{get_type(arg[0]) if arg else 'unknown'}[]"
+        elif isinstance(arg, int):
+            return "uint256"  # Assuming uint256 for integers
+        elif isinstance(arg, bool):
+            return "bool"
+        elif isinstance(arg, str):
+            return "string"
+        elif isinstance(arg, bytes):
+            return "bytes"
+        else:
+            return "unknown"
+    
+    return ",".join(get_type(arg) for arg in args)
 
 
 def prepare_transaction(address: ChecksumAddress, w3: Union['AsyncWeb3',
@@ -37,11 +53,56 @@ def prepare_transaction(address: ChecksumAddress, w3: Union['AsyncWeb3',
     TODO: make this a public API
     TODO: add new prepare_deploy_transaction API
     """
-    pass
+    if transaction is None:
+        transaction = {}
+    
+    if fn_identifier is FallbackFn:
+        fn_abi = get_fallback_func_abi(contract_abi)
+    elif fn_identifier is ReceiveFn:
+        fn_abi = get_receive_func_abi(contract_abi)
+    elif not is_text(fn_identifier):
+        raise TypeError("Unsupported function identifier")
+    elif fn_abi is None:
+        fn_abi = find_matching_fn_abi(contract_abi, fn_identifier, fn_args, fn_kwargs)
+    
+    validate_payable(transaction, fn_abi)
+
+    if transaction.get('data'):
+        raise ValueError("Transaction parameter may not contain a 'data' key")
+
+    if transaction.get('to') and transaction['to'] != address:
+        raise ValueError("Supplied 'to' address in transaction does not match the contract address")
+
+    if 'to' not in transaction:
+        transaction['to'] = address
+
+    if 'value' not in transaction:
+        transaction['value'] = 0
+
+    if fn_identifier is FallbackFn:
+        transaction['data'] = '0x'
+    elif fn_identifier is ReceiveFn:
+        transaction['data'] = '0x'
+    else:
+        transaction['data'] = encode_transaction_data(
+            w3,
+            fn_identifier,
+            contract_abi,
+            fn_abi,
+            fn_args,
+            fn_kwargs,
+        )
+
+    return transaction
 
 
 def validate_payable(transaction: TxParams, abi: ABIFunction) ->None:
     """Raise Web3ValidationError if non-zero ether
     is sent to a non-payable function.
     """
-    pass
+    if 'value' in transaction:
+        if transaction['value'] != 0:
+            if "payable" not in abi.get('stateMutability', '') and not abi.get('payable', False):
+                raise Web3ValidationError(
+                    "Sending non-zero ether to a non-payable function"
+                )
