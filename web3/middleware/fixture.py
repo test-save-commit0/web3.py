@@ -11,7 +11,15 @@ def construct_fixture_middleware(fixtures: Dict[RPCEndpoint, Any]
     Constructs a middleware which returns a static response for any method
     which is found in the provided fixtures.
     """
-    pass
+    def fixture_middleware(
+        make_request: Callable[[RPCEndpoint, Any], Any], w3: "Web3"
+    ) -> Callable[[RPCEndpoint, Any], RPCResponse]:
+        def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in fixtures:
+                return {"result": fixtures[method]}
+            return make_request(method, params)
+        return middleware
+    return fixture_middleware
 
 
 def construct_result_generator_middleware(result_generators: Dict[
@@ -22,7 +30,16 @@ def construct_result_generator_middleware(result_generators: Dict[
     whatever response the generator function returns.  Callbacks must be
     functions with the signature `fn(method, params)`.
     """
-    pass
+    def result_generator_middleware(
+        make_request: Callable[[RPCEndpoint, Any], Any], w3: "Web3"
+    ) -> Callable[[RPCEndpoint, Any], RPCResponse]:
+        def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in result_generators:
+                result = result_generators[method](method, params)
+                return {"result": result}
+            return make_request(method, params)
+        return middleware
+    return result_generator_middleware
 
 
 def construct_error_generator_middleware(error_generators: Dict[RPCEndpoint,
@@ -33,7 +50,16 @@ def construct_error_generator_middleware(error_generators: Dict[RPCEndpoint,
     whatever error message the generator function returns.  Callbacks must be
     functions with the signature `fn(method, params)`.
     """
-    pass
+    def error_generator_middleware(
+        make_request: Callable[[RPCEndpoint, Any], Any], w3: "Web3"
+    ) -> Callable[[RPCEndpoint, Any], RPCResponse]:
+        def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in error_generators:
+                error = error_generators[method](method, params)
+                return {"error": error}
+            return make_request(method, params)
+        return middleware
+    return error_generator_middleware
 
 
 async def async_construct_result_generator_middleware(result_generators:
@@ -42,7 +68,16 @@ async def async_construct_result_generator_middleware(result_generators:
     Constructs a middleware which returns a static response for any method
     which is found in the provided fixtures.
     """
-    pass
+    async def async_result_generator_middleware(
+        make_request: Callable[[RPCEndpoint, Any], Any], w3: "AsyncWeb3"
+    ) -> AsyncMiddlewareCoroutine:
+        async def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in result_generators:
+                result = result_generators[method](method, params)
+                return {"result": result}
+            return await make_request(method, params)
+        return middleware
+    return async_result_generator_middleware
 
 
 async def async_construct_error_generator_middleware(error_generators: Dict
@@ -53,4 +88,13 @@ async def async_construct_error_generator_middleware(error_generators: Dict
     whatever error message the generator function returns.  Callbacks must be
     functions with the signature `fn(method, params)`.
     """
-    pass
+    async def async_error_generator_middleware(
+        make_request: Callable[[RPCEndpoint, Any], Any], w3: "AsyncWeb3"
+    ) -> AsyncMiddlewareCoroutine:
+        async def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in error_generators:
+                error = error_generators[method](method, params)
+                return {"error": error}
+            return await make_request(method, params)
+        return middleware
+    return async_error_generator_middleware
