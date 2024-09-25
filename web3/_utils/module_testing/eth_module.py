@@ -50,8 +50,266 @@ if TYPE_CHECKING:
 
 
 class AsyncEthModuleTest:
-    pass
+    async def test_eth_gas_price(self, async_w3: "AsyncWeb3") -> None:
+        gas_price = await async_w3.eth.gas_price
+        assert is_integer(gas_price)
+        assert gas_price > 0
+
+    async def test_eth_max_priority_fee(self, async_w3: "AsyncWeb3") -> None:
+        max_priority_fee = await async_w3.eth.max_priority_fee
+        assert is_integer(max_priority_fee)
+        assert max_priority_fee > 0
+
+    async def test_eth_accounts(self, async_w3: "AsyncWeb3") -> None:
+        accounts = await async_w3.eth.accounts
+        assert is_list_like(accounts)
+        assert len(accounts) != 0
+        assert all(is_checksum_address(account) for account in accounts)
+
+    async def test_eth_block_number(self, async_w3: "AsyncWeb3") -> None:
+        block_number = await async_w3.eth.block_number
+        assert is_integer(block_number)
+        assert block_number >= 0
+
+    async def test_eth_get_block_number(self, async_w3: "AsyncWeb3") -> None:
+        block_number = await async_w3.eth.get_block_number()
+        assert is_integer(block_number)
+        assert block_number >= 0
+
+    async def test_eth_get_balance(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        balance = await async_w3.eth.get_balance(coinbase)
+        assert is_integer(balance)
+        assert balance >= 0
+
+    async def test_eth_get_storage_at(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        storage = await async_w3.eth.get_storage_at(coinbase, 0)
+        assert isinstance(storage, HexBytes)
+
+    async def test_eth_get_transaction_count(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        transaction_count = await async_w3.eth.get_transaction_count(coinbase)
+        assert is_integer(transaction_count)
+        assert transaction_count >= 0
+
+    async def test_eth_get_block(self, async_w3: "AsyncWeb3") -> None:
+        latest_block = await async_w3.eth.get_block('latest')
+        assert isinstance(latest_block, BlockData)
+        assert latest_block['number'] > 0
+
+    async def test_eth_get_code(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        code = await async_w3.eth.get_code(coinbase)
+        assert isinstance(code, HexBytes)
+
+    async def test_eth_sign(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        signature = await async_w3.eth.sign(coinbase, text='Hello World')
+        assert isinstance(signature, HexBytes)
+        assert len(signature) == 65
+
+    async def test_eth_send_transaction(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        transaction = {
+            'to': UNKNOWN_ADDRESS,
+            'from': coinbase,
+            'value': 1,
+        }
+        tx_hash = await async_w3.eth.send_transaction(transaction)
+        assert isinstance(tx_hash, HexBytes)
+
+    async def test_eth_get_transaction(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        transaction = {
+            'to': UNKNOWN_ADDRESS,
+            'from': coinbase,
+            'value': 1,
+        }
+        tx_hash = await async_w3.eth.send_transaction(transaction)
+        tx = await async_w3.eth.get_transaction(tx_hash)
+        assert isinstance(tx, TxData)
+        assert tx['hash'] == tx_hash
+
+    async def test_eth_get_transaction_receipt(self, async_w3: "AsyncWeb3") -> None:
+        coinbase = await async_w3.eth.coinbase
+        transaction = {
+            'to': UNKNOWN_ADDRESS,
+            'from': coinbase,
+            'value': 1,
+        }
+        tx_hash = await async_w3.eth.send_transaction(transaction)
+        receipt = await async_w3.eth.wait_for_transaction_receipt(tx_hash)
+        assert isinstance(receipt, TxData)
+        assert receipt['transactionHash'] == tx_hash
+
+    async def test_eth_get_transaction_receipt_unmined(self, async_w3: "AsyncWeb3") -> None:
+        with pytest.raises(TransactionNotFound):
+            await async_w3.eth.get_transaction_receipt(UNKNOWN_HASH)
+
+    async def test_eth_get_transaction_by_block(self, async_w3: "AsyncWeb3") -> None:
+        block = await async_w3.eth.get_block('latest')
+        if len(block['transactions']) > 0:
+            transaction = await async_w3.eth.get_transaction_by_block(block['number'], 0)
+            assert isinstance(transaction, TxData)
+
+    async def test_eth_get_uncle_by_block(self, async_w3: "AsyncWeb3") -> None:
+        block = await async_w3.eth.get_block('latest')
+        if len(block['uncles']) > 0:
+            uncle = await async_w3.eth.get_uncle_by_block(block['number'], 0)
+            assert isinstance(uncle, BlockData)
+
+    async def test_eth_get_compilers(self, async_w3: "AsyncWeb3") -> None:
+        compilers = await async_w3.eth.get_compilers()
+        assert is_list_like(compilers)
+
+    async def test_eth_syncing(self, async_w3: "AsyncWeb3") -> None:
+        syncing = await async_w3.eth.syncing
+        assert is_boolean(syncing) or isinstance(syncing, SyncStatus)
+
+    async def test_eth_mining(self, async_w3: "AsyncWeb3") -> None:
+        mining = await async_w3.eth.mining
+        assert is_boolean(mining)
+
+    async def test_eth_hashrate(self, async_w3: "AsyncWeb3") -> None:
+        hashrate = await async_w3.eth.hashrate
+        assert is_integer(hashrate)
+        assert hashrate >= 0
+
+    async def test_eth_chain_id(self, async_w3: "AsyncWeb3") -> None:
+        chain_id = await async_w3.eth.chain_id
+        assert is_integer(chain_id)
+        assert chain_id > 0
 
 
 class EthModuleTest:
-    pass
+    def test_eth_gas_price(self, web3: "Web3") -> None:
+        gas_price = web3.eth.gas_price
+        assert is_integer(gas_price)
+        assert gas_price > 0
+
+    def test_eth_max_priority_fee(self, web3: "Web3") -> None:
+        max_priority_fee = web3.eth.max_priority_fee
+        assert is_integer(max_priority_fee)
+        assert max_priority_fee > 0
+
+    def test_eth_accounts(self, web3: "Web3") -> None:
+        accounts = web3.eth.accounts
+        assert is_list_like(accounts)
+        assert len(accounts) != 0
+        assert all(is_checksum_address(account) for account in accounts)
+
+    def test_eth_block_number(self, web3: "Web3") -> None:
+        block_number = web3.eth.block_number
+        assert is_integer(block_number)
+        assert block_number >= 0
+
+    def test_eth_get_block_number(self, web3: "Web3") -> None:
+        block_number = web3.eth.get_block_number()
+        assert is_integer(block_number)
+        assert block_number >= 0
+
+    def test_eth_get_balance(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        balance = web3.eth.get_balance(coinbase)
+        assert is_integer(balance)
+        assert balance >= 0
+
+    def test_eth_get_storage_at(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        storage = web3.eth.get_storage_at(coinbase, 0)
+        assert isinstance(storage, HexBytes)
+
+    def test_eth_get_transaction_count(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        transaction_count = web3.eth.get_transaction_count(coinbase)
+        assert is_integer(transaction_count)
+        assert transaction_count >= 0
+
+    def test_eth_get_block(self, web3: "Web3") -> None:
+        latest_block = web3.eth.get_block('latest')
+        assert isinstance(latest_block, BlockData)
+        assert latest_block['number'] > 0
+
+    def test_eth_get_code(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        code = web3.eth.get_code(coinbase)
+        assert isinstance(code, HexBytes)
+
+    def test_eth_sign(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        signature = web3.eth.sign(coinbase, text='Hello World')
+        assert isinstance(signature, HexBytes)
+        assert len(signature) == 65
+
+    def test_eth_send_transaction(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        transaction = {
+            'to': UNKNOWN_ADDRESS,
+            'from': coinbase,
+            'value': 1,
+        }
+        tx_hash = web3.eth.send_transaction(transaction)
+        assert isinstance(tx_hash, HexBytes)
+
+    def test_eth_get_transaction(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        transaction = {
+            'to': UNKNOWN_ADDRESS,
+            'from': coinbase,
+            'value': 1,
+        }
+        tx_hash = web3.eth.send_transaction(transaction)
+        tx = web3.eth.get_transaction(tx_hash)
+        assert isinstance(tx, TxData)
+        assert tx['hash'] == tx_hash
+
+    def test_eth_get_transaction_receipt(self, web3: "Web3") -> None:
+        coinbase = web3.eth.coinbase
+        transaction = {
+            'to': UNKNOWN_ADDRESS,
+            'from': coinbase,
+            'value': 1,
+        }
+        tx_hash = web3.eth.send_transaction(transaction)
+        receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+        assert isinstance(receipt, TxData)
+        assert receipt['transactionHash'] == tx_hash
+
+    def test_eth_get_transaction_receipt_unmined(self, web3: "Web3") -> None:
+        with pytest.raises(TransactionNotFound):
+            web3.eth.get_transaction_receipt(UNKNOWN_HASH)
+
+    def test_eth_get_transaction_by_block(self, web3: "Web3") -> None:
+        block = web3.eth.get_block('latest')
+        if len(block['transactions']) > 0:
+            transaction = web3.eth.get_transaction_by_block(block['number'], 0)
+            assert isinstance(transaction, TxData)
+
+    def test_eth_get_uncle_by_block(self, web3: "Web3") -> None:
+        block = web3.eth.get_block('latest')
+        if len(block['uncles']) > 0:
+            uncle = web3.eth.get_uncle_by_block(block['number'], 0)
+            assert isinstance(uncle, BlockData)
+
+    def test_eth_get_compilers(self, web3: "Web3") -> None:
+        compilers = web3.eth.get_compilers()
+        assert is_list_like(compilers)
+
+    def test_eth_syncing(self, web3: "Web3") -> None:
+        syncing = web3.eth.syncing
+        assert is_boolean(syncing) or isinstance(syncing, SyncStatus)
+
+    def test_eth_mining(self, web3: "Web3") -> None:
+        mining = web3.eth.mining
+        assert is_boolean(mining)
+
+    def test_eth_hashrate(self, web3: "Web3") -> None:
+        hashrate = web3.eth.hashrate
+        assert is_integer(hashrate)
+        assert hashrate >= 0
+
+    def test_eth_chain_id(self, web3: "Web3") -> None:
+        chain_id = web3.eth.chain_id
+        assert is_integer(chain_id)
+        assert chain_id > 0
