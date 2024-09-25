@@ -49,10 +49,24 @@ class RequestProcessor:
         request is made but inner requests, say to `eth_estimateGas` if the `gas` is
         missing, are made before the original request is sent.
         """
-        pass
+        if cache_key in self._request_information_cache:
+            old_request_info = self._request_information_cache[cache_key]
+            new_request_id = old_request_info.request_id + 1
+            new_cache_key = generate_cache_key(
+                old_request_info.method,
+                old_request_info.params,
+                new_request_id
+            )
+            self._request_information_cache[new_cache_key] = RequestInformation(
+                old_request_info.method,
+                old_request_info.params,
+                new_request_id
+            )
+            del self._request_information_cache[cache_key]
 
     def clear_caches(self) ->None:
         """
         Clear the request processor caches.
         """
-        pass
+        self._request_response_cache.clear()
+        self._request_information_cache.clear()
