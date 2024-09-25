@@ -35,7 +35,18 @@ class ReadableAttributeDict(Mapping[TKey, TValue]):
         Custom pretty output for the IPython console
         https://ipython.readthedocs.io/en/stable/api/generated/IPython.lib.pretty.html#extending  # noqa: E501
         """
-        pass
+        class_name = self.__class__.__name__
+        if cycle:
+            builder.text(f'{class_name}(...)')
+        else:
+            with builder.group(4, f'{class_name}(', ')'):
+                for idx, (key, value) in enumerate(self.__dict__.items()):
+                    if idx:
+                        builder.text(',')
+                        builder.breakable()
+                    builder.pretty(key)
+                    builder.text(': ')
+                    builder.pretty(value)
 
 
 class MutableAttributeDict(MutableMapping[TKey, TValue],
@@ -83,7 +94,14 @@ def tupleize_lists_nested(d: Mapping[TKey, TValue]) ->AttributeDict[TKey,
     This method converts lists to tuples, rendering them hashable.
     Other unhashable types found will raise a TypeError
     """
-    pass
+    def _tupleize_lists(item: Any) -> Any:
+        if isinstance(item, list):
+            return tuple(_tupleize_lists(i) for i in item)
+        elif isinstance(item, dict):
+            return {k: _tupleize_lists(v) for k, v in item.items()}
+        return item
+
+    return AttributeDict({k: _tupleize_lists(v) for k, v in d.items()})
 
 
 class NamedElementOnion(Mapping[TKey, TValue]):
@@ -111,7 +129,16 @@ class NamedElementOnion(Mapping[TKey, TValue]):
         or at the outermost layer. Note that inserting to the outermost is equivalent
         to calling :meth:`add` .
         """
-        pass
+        if layer is None:
+            # Insert at the outermost layer (equivalent to add)
+            self.add(element, name)
+        elif layer == 0:
+            # Insert at the innermost layer
+            if name is None:
+                name = element.__name__ if hasattr(element, '__name__') else str(element)
+            self._queue[name] = element
+        else:
+            raise ValueError("Only layer=None (outermost) or layer=0 (innermost) are supported")
 
     @property
     def middlewares(self) ->Sequence[Any]:
@@ -119,7 +146,7 @@ class NamedElementOnion(Mapping[TKey, TValue]):
         Returns middlewares in the appropriate order to be imported into a new Web3
         instance (reversed _queue order) as a list of (middleware, name) tuples.
         """
-        pass
+        return [(middleware, name) for name, middleware in reversed(self._queue.items())]
 
     def __iter__(self) ->Iterator[TKey]:
         elements = self._queue.values()
