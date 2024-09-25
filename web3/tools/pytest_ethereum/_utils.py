@@ -15,7 +15,10 @@ def pluck_matching_uri(deployment_data: Dict[URI, Dict[str, str]], w3: Web3
     Return any blockchain uri that matches w3-connected chain, if one
     is present in the deployment data keys.
     """
-    pass
+    for uri in deployment_data.keys():
+        if check_if_chain_matches_chain_uri(w3, uri):
+            return uri
+    return None
 
 
 def contains_matching_uri(deployment_data: Dict[str, Dict[str, str]], w3: Web3
@@ -24,7 +27,7 @@ def contains_matching_uri(deployment_data: Dict[str, Dict[str, str]], w3: Web3
     Returns true if any blockchain uri in deployment data matches
     w3-connected chain.
     """
-    pass
+    return any(check_if_chain_matches_chain_uri(w3, uri) for uri in deployment_data.keys())
 
 
 def insert_deployment(package: Package, deployment_name: str,
@@ -35,11 +38,32 @@ def insert_deployment(package: Package, deployment_name: str,
     with the new deployment data. If no match, it will simply add
     the new chain uri and deployment data.
     """
-    pass
+    old_deployments = package.manifest.get('deployments', {})
+    
+    if latest_block_uri in old_deployments:
+        updated_deployments = assoc_in(
+            old_deployments,
+            [latest_block_uri, deployment_name],
+            deployment_data
+        )
+    else:
+        updated_deployments = assoc(
+            old_deployments,
+            latest_block_uri,
+            {deployment_name: deployment_data}
+        )
+    
+    return assoc(package.manifest, 'deployments', updated_deployments)
 
 
 def get_deployment_address(linked_type: str, package: Package) ->Address:
     """
     Return the address of a linked_type found in a package's manifest deployments.
     """
-    pass
+    deployments = package.manifest.get('deployments', {})
+    
+    for deployment_data in deployments.values():
+        if linked_type in deployment_data:
+            return Address(deployment_data[linked_type]['address'])
+    
+    raise LinkerError(f"Unable to find deployment address for {linked_type}")
