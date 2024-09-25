@@ -41,7 +41,11 @@ def segment_count(start: int, stop: int, step: int=5) ->Iterable[Tuple[int,
     >>> next(segment_counter) #  Remainder is also returned
     (9, 10)
     """
-    pass
+    current = start
+    while current < stop:
+        next_segment = min(current + step, stop)
+        yield (current, next_segment)
+        current = next_segment
 
 
 def block_ranges(start_block: BlockNumber, last_block: Optional[BlockNumber
@@ -51,7 +55,12 @@ def block_ranges(start_block: BlockNumber, last_block: Optional[BlockNumber
     Ranges do not overlap to facilitate use as ``toBlock``, ``fromBlock``
     json-rpc arguments, which are both inclusive.
     """
-    pass
+    if last_block is None:
+        yield (start_block, None)
+        return
+
+    for from_block, to_block in segment_count(start_block, last_block + 1, step):
+        yield (BlockNumber(from_block), BlockNumber(to_block - 1))
 
 
 def iter_latest_block(w3: 'Web3', to_block: Optional[Union[BlockNumber,
@@ -72,7 +81,16 @@ def iter_latest_block(w3: 'Web3', to_block: Optional[Union[BlockNumber,
     10
     >>> next(new_blocks)  # latest block > to block
     """
-    pass
+    last_block = None
+    while True:
+        latest_block = w3.eth.block_number
+        if latest_block != last_block:
+            if to_block is not None and latest_block > to_block:
+                return
+            yield latest_block
+            last_block = latest_block
+        else:
+            yield None
 
 
 def iter_latest_block_ranges(w3: 'Web3', from_block: BlockNumber, to_block:
@@ -92,7 +110,13 @@ def iter_latest_block_ranges(w3: 'Web3', from_block: BlockNumber, to_block:
     >>> next(blocks_to_filter)  # latest block number = 50
     (46, 50)
     """
-    pass
+    for latest_block in iter_latest_block(w3, to_block):
+        if latest_block is None:
+            continue
+        yield (from_block, latest_block)
+        from_block = latest_block + 1
+        if to_block is not None and latest_block >= to_block:
+            break
 
 
 def get_logs_multipart(w3: 'Web3', start_block: BlockNumber, stop_block:
@@ -104,7 +128,14 @@ def get_logs_multipart(w3: 'Web3', start_block: BlockNumber, stop_block:
     The getLog request is partitioned into multiple calls of the max number of blocks
     ``max_blocks``.
     """
-    pass
+    for from_block, to_block in block_ranges(start_block, stop_block, max_blocks):
+        params = {
+            'fromBlock': from_block,
+            'toBlock': to_block,
+            'address': address,
+            'topics': topics
+        }
+        yield w3.eth.get_logs(params)
 
 
 class RequestLogs:
@@ -159,7 +190,16 @@ async def async_iter_latest_block(w3: 'Web3', to_block: Optional[Union[
     10
     >>> next(new_blocks)  # latest block > to block
     """
-    pass
+    last_block = None
+    while True:
+        latest_block = await w3.eth.block_number
+        if latest_block != last_block:
+            if to_block is not None and latest_block > to_block:
+                return
+            yield latest_block
+            last_block = latest_block
+        else:
+            yield None
 
 
 async def async_iter_latest_block_ranges(w3: 'Web3', from_block:
@@ -179,7 +219,13 @@ async def async_iter_latest_block_ranges(w3: 'Web3', from_block:
     >>> next(blocks_to_filter)  # latest block number = 50
     (46, 50)
     """
-    pass
+    async for latest_block in async_iter_latest_block(w3, to_block):
+        if latest_block is None:
+            continue
+        yield (from_block, latest_block)
+        from_block = latest_block + 1
+        if to_block is not None and latest_block >= to_block:
+            break
 
 
 async def async_get_logs_multipart(w3: 'Web3', start_block: BlockNumber,
@@ -191,7 +237,14 @@ async def async_get_logs_multipart(w3: 'Web3', start_block: BlockNumber,
     The getLog request is partitioned into multiple calls of the max number of blocks
     ``max_blocks``.
     """
-    pass
+    for from_block, to_block in block_ranges(start_block, stop_block, max_blocks):
+        params = {
+            'fromBlock': from_block,
+            'toBlock': to_block,
+            'address': address,
+            'topics': topics
+        }
+        yield await w3.eth.get_logs(params)
 
 
 class AsyncRequestLogs:
