@@ -34,13 +34,13 @@ class BaseFilter:
         Hook for subclasses to change the format of the value that is passed
         into the callback functions.
         """
-        pass
+        return entry
 
     def is_valid_entry(self, entry: LogReceipt) ->bool:
         """
         Hook for subclasses to implement additional filtering layers.
         """
-        pass
+        return True
 
 
 class Filter(BaseFilter):
@@ -95,7 +95,15 @@ class LogFilter(Filter):
         Expects a set of tuples with the type and value, e.g.:
         (('uint256', [12345, 54321]), ('string', ('a-single-string',)))
         """
-        pass
+        self.data_filter_set = data_filter_set
+        self.data_filter_set_regex = []
+        self.data_filter_set_function = []
+
+        for data_type, data_value in data_filter_set:
+            if is_string(data_value) and not is_hex(data_value):
+                self.data_filter_set_regex.append((data_type, data_value))
+            else:
+                self.data_filter_set_function.append((data_type, data_value))
 
 
 class AsyncLogFilter(AsyncFilter):
@@ -120,7 +128,15 @@ class AsyncLogFilter(AsyncFilter):
         Expects a set of tuples with the type and value, e.g.:
         (('uint256', [12345, 54321]), ('string', ('a-single-string',)))
         """
-        pass
+        self.data_filter_set = data_filter_set
+        self.data_filter_set_regex = []
+        self.data_filter_set_function = []
+
+        for data_type, data_value in data_filter_set:
+            if is_string(data_value) and not is_hex(data_value):
+                self.data_filter_set_regex.append((data_type, data_value))
+            else:
+                self.data_filter_set_function.append((data_type, data_value))
 
 
 not_text = complement(is_text)
@@ -133,7 +149,10 @@ def normalize_data_values(type_string: TypeStr, data_value: Any) ->Any:
     eth-abi v1 returns utf-8 bytes for string values.
     This can be removed once eth-abi v2 is required.
     """
-    pass
+    if type_string == 'string':
+        return normalize_to_text(data_value)
+    else:
+        return data_value
 
 
 @curry
@@ -144,7 +163,18 @@ def match_fn(codec: ABICodec, match_values_and_abi: Collection[Tuple[str,
     Values provided through the match_values_and_abi parameter are
     compared to the abi decoded log data.
     """
-    pass
+    types, match_values = zip(*match_values_and_abi)
+    decoded_values = codec.decode(types, HexBytes(data))
+    normalized_decoded_values = [
+        normalize_data_values(type_string, data_value)
+        for type_string, data_value
+        in zip(types, decoded_values)
+    ]
+    return all(
+        match_value == decoded_value
+        for match_value, decoded_value
+        in zip(match_values, normalized_decoded_values)
+    )
 
 
 class _UseExistingFilter(Exception):
