@@ -30,7 +30,7 @@ def get_normalized_abi_arg_type(abi_arg: ABIEventParams) ->str:
     makes use of `collapse_if_tuple()` to collapse the appropriate component
     types within a tuple type, if present.
     """
-    pass
+    return collapse_if_tuple(dict(abi_arg)["type"])
 
 
 class AddressEncoder(encoding.AddressEncoder):
@@ -84,7 +84,34 @@ def merge_args_and_kwargs(function_abi: ABIFunction, args: Sequence[Any],
     given.  Returns a list of argument values aligned to the order of inputs
     defined in ``function_abi``.
     """
-    pass
+    if len(args) + len(kwargs) > len(function_abi.get('inputs', [])):
+        raise TypeError(
+            "Too many arguments: got {0} args and {1} kwargs, expected {2}".format(
+                len(args), len(kwargs), len(function_abi.get('inputs', []))
+            )
+        )
+
+    args_as_kwargs = {}
+    for arg_name, arg_value in zip(get_abi_input_names(function_abi), args):
+        args_as_kwargs[arg_name] = arg_value
+
+    for key, value in kwargs.items():
+        if key in args_as_kwargs:
+            raise TypeError(
+                "Duplicate argument name found: {0}".format(key)
+            )
+        args_as_kwargs[key] = value
+
+    unknown_kwargs = set(args_as_kwargs.keys()) - set(get_abi_input_names(function_abi))
+    if unknown_kwargs:
+        raise TypeError(
+            "Unknown arguments found: {0}".format(", ".join(unknown_kwargs))
+        )
+
+    return tuple(
+        args_as_kwargs.get(arg_abi['name'])
+        for arg_abi in function_abi.get('inputs', [])
+    )
 
 
 TUPLE_TYPE_STR_RE = re.compile('^(tuple)((\\[([1-9]\\d*\\b)?])*)??$')
@@ -95,7 +122,12 @@ def get_tuple_type_str_parts(s: str) ->Optional[Tuple[str, Optional[str]]]:
     Takes a JSON ABI type string.  For tuple type strings, returns the separated
     prefix and array dimension parts.  For all other strings, returns ``None``.
     """
-    pass
+    match = TUPLE_TYPE_STR_RE.match(s)
+    if match:
+        tuple_prefix = match.group(1)
+        tuple_dims = match.group(2) or None
+        return tuple_prefix, tuple_dims
+    return None
 
 
 def _align_abi_input(arg_abi: ABIFunctionParams, arg: Any) ->Tuple[Any, ...]:
@@ -103,7 +135,19 @@ def _align_abi_input(arg_abi: ABIFunctionParams, arg: Any) ->Tuple[Any, ...]:
     Aligns the values of any mapping at any level of nesting in ``arg``
     according to the layout of the corresponding abi spec.
     """
-    pass
+    if isinstance(arg, abc.Mapping):
+        return tuple(
+            _align_abi_input(component_abi, arg.get(component_abi['name'], None))
+            for component_abi in arg_abi['components']
+        )
+    elif isinstance(arg, abc.Iterable) and not isinstance(arg, str):
+        return tuple(
+            _align_abi_input(component_abi, component)
+            for component_abi, component
+            in zip(arg_abi['components'], arg)
+        )
+    else:
+        return arg,
 
 
 def get_aligned_abi_inputs(abi: ABIFunction, args: Union[Tuple[Any, ...],
@@ -115,7 +159,24 @@ def get_aligned_abi_inputs(abi: ABIFunction, args: Union[Tuple[Any, ...],
     contained in ``args`` may contain nested mappings or sequences corresponding
     to tuple-encoded values in ``abi``.
     """
-    pass
+    if isinstance(args, abc.Mapping):
+        kwargs = args
+    elif isinstance(args, abc.Sequence):
+        kwargs = merge_args_and_kwargs(abi, args, {})
+    else:
+        raise TypeError("Expected mapping or sequence, got {}".format(type(args)))
+
+    aligned_inputs = tuple(
+        _align_abi_input(arg_abi, kwargs.get(arg_abi['name']))
+        for arg_abi in abi.get('inputs', [])
+    )
+
+    input_types = tuple(
+        arg_abi['type']
+        for arg_abi in abi.get('inputs', [])
+    )
+
+    return input_types, aligned_inputs
 
 
 DYNAMIC_TYPES = ['bytes', 'string']
@@ -137,7 +198,21 @@ def size_of_type(abi_type: TypeStr) ->int:
     """
     Returns size in bits of abi_type
     """
-    pass
+    if 'string' in abi_type:
+        return None
+    if 'byte' in abi_type:
+        return None
+    if '[' in abi_type:
+        return None
+    if abi_type == 'bool':
+        return 8
+    if abi_type == 'address':
+        return 160
+    if abi_type.startswith('uint'):
+        return int(abi_type[4:])
+    if abi_type.startswith('int'):
+        return int(abi_type[3:])
+    raise ValueError("Unknown type: {}".format(abi_type))
 
 
 END_BRACKETS_OF_ARRAY_TYPE_REGEX = '\\[[^]]*\\]$'
