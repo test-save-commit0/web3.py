@@ -20,4 +20,33 @@ async def async_fill_transaction_defaults(async_w3: 'AsyncWeb3',
     """
     if async_w3 is None, fill as much as possible while offline
     """
-    pass
+    filled_transaction = cast(TxParams, {})
+    for key, default_getter in TRANSACTION_DEFAULTS.items():
+        if key not in transaction:
+            if callable(default_getter):
+                if async_w3 is None:
+                    continue
+                default_val = (
+                    await default_getter(async_w3, transaction)
+                    if key in DYNAMIC_FEE_TXN_PARAMS
+                    else await default_getter(async_w3, filled_transaction)
+                )
+            else:
+                default_val = default_getter
+            filled_transaction[key] = default_val
+    
+    filled_transaction = merge(filled_transaction, transaction)
+    
+    if async_w3 is not None:
+        if 'from' not in filled_transaction:
+            filled_transaction['from'] = await async_w3.eth.default_account
+        
+        if filled_transaction.get('nonce') is None:
+            filled_transaction['nonce'] = await async_w3.eth.get_transaction_count(
+                filled_transaction['from']
+            )
+        
+        if 'chainId' not in filled_transaction:
+            filled_transaction['chainId'] = await async_w3.eth.chain_id
+    
+    return filled_transaction
