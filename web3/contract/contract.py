@@ -86,7 +86,34 @@ class ContractEvent(BaseContractEvent):
           same time as fromBlock or toBlock
         :yield: Tuple of :class:`AttributeDict` instances
         """
-        pass
+        if block_hash is not None and (fromBlock is not None or toBlock is not None):
+            raise ValueError("block_hash cannot be used with fromBlock or toBlock")
+
+        abi = self._get_event_abi()
+        argument_filters = argument_filters or {}
+
+        if fromBlock is None:
+            fromBlock = "latest"
+        if toBlock is None:
+            toBlock = "latest"
+
+        # Construct the filter
+        filter_params = {
+            "address": self.address,
+            "topics": self._get_event_filter_topics(abi, argument_filters),
+        }
+
+        if block_hash is not None:
+            filter_params["blockHash"] = block_hash
+        else:
+            filter_params["fromBlock"] = fromBlock
+            filter_params["toBlock"] = toBlock
+
+        logs = self.w3.eth.get_logs(filter_params)
+
+        # Convert raw log data into processed event data
+        for log in logs:
+            yield get_event_data(self.w3, abi, log)
 
     @combomethod
     def create_filter(self, *, argument_filters: Optional[Dict[str, Any]]=
@@ -96,7 +123,30 @@ class ContractEvent(BaseContractEvent):
         """
         Create filter object that tracks logs emitted by this contract event.
         """
-        pass
+        abi = self._get_event_abi()
+        
+        argument_filters = argument_filters or {}
+        _filters = dict(**argument_filters)
+        
+        data_filter_set, event_filter_params = construct_event_filter_params(
+            abi,
+            contract_address=self.address,
+            argument_filters=_filters,
+            fromBlock=fromBlock,
+            toBlock=toBlock,
+            address=address,
+            topics=topics,
+        )
+        
+        log_data_extract_fn = functools.partial(get_event_data, abi)
+        
+        log_filter = self.w3.eth.filter(event_filter_params)
+        
+        log_filter.set_data_filters(data_filter_set)
+        log_filter.log_entry_formatter = log_data_extract_fn
+        log_filter.filter_params = event_filter_params
+        
+        return log_filter
 
 
 class ContractEvents(BaseContractEvents):
@@ -152,7 +202,24 @@ class ContractFunction(BaseContractFunction):
         :return: ``Caller`` object that has contract public functions
             and variables exposed as Python methods
         """
-        pass
+        call_transaction = self._get_call_txn(transaction)
+
+        block_id = parse_block_identifier(self.w3, block_identifier)
+
+        return call_contract_function(
+            self.w3,
+            self.address,
+            self._return_data_normalizers,
+            self.function_identifier,
+            call_transaction,
+            block_id,
+            self.contract_abi,
+            self.abi,
+            state_override,
+            ccip_read_enabled,
+            *self.args,
+            **self.kwargs
+        )
 
 
 class ContractFunctions(BaseContractFunctions):
@@ -212,7 +279,19 @@ class Contract(BaseContract):
         :param kwargs: The contract constructor arguments as keyword arguments
         :return: a contract constructor object
         """
-        pass
+        if cls.bytecode is None:
+            raise ValueError(
+                "Cannot call constructor on a contract that does not have 'bytecode' associated "
+                "with it"
+            )
+
+        return ContractConstructor(
+            cls.w3,
+            cls.abi,
+            cls.bytecode,
+            *args,
+            **kwargs
+        )
 
 
 class ContractCaller(BaseContractCaller):
@@ -258,4 +337,15 @@ class ContractConstructor(BaseContractConstructor):
         """
         Build the transaction dictionary without sending
         """
-        pass
+        if transaction is None:
+            transaction = {}
+
+        contracts = self.w3.eth.contract(
+            abi=self.abi, bytecode=self.bytecode, bytecode_runtime=self.bytecode_runtime
+        )
+
+        built_transaction = contracts._encode_constructor_data(
+            transaction, self.args, self.kwargs
+        )
+
+        return fill_transaction_defaults(self.w3, built_transaction)
