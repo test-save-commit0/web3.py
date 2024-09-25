@@ -29,7 +29,11 @@ def get_event_abi_types_for_decoding(event_inputs: Sequence[ABIEventParams]
     `string`.  Because of this we need to modify the types so that we can
     decode the log entries using the correct types.
     """
-    pass
+    for input in event_inputs:
+        if input['indexed'] and input['type'] in ('string', 'bytes'):
+            yield 'bytes32'
+        else:
+            yield input['type']
 
 
 @curry
@@ -39,7 +43,47 @@ def get_event_data(abi_codec: ABICodec, event_abi: ABIEvent, log_entry:
     Given an event ABI and a log entry for that event, return the decoded
     event data
     """
-    pass
+    log_topics = log_entry['topics']
+    log_data = log_entry['data']
+    
+    # Validate that the first topic is the event signature
+    if event_abi_to_log_topic(event_abi) != log_topics[0]:
+        raise MismatchedABI("Event signature mismatch")
+    
+    indexed_inputs = get_indexed_event_inputs(event_abi)
+    non_indexed_inputs = exclude_indexed_event_inputs(event_abi)
+    
+    # Decode indexed inputs
+    decoded_indexed_data = abi_codec.decode(
+        [input['type'] for input in indexed_inputs],
+        b''.join(log_topics[1:])
+    )
+    
+    # Decode non-indexed inputs
+    decoded_non_indexed_data = abi_codec.decode(
+        [input['type'] for input in non_indexed_inputs],
+        log_data
+    )
+    
+    # Combine decoded data
+    decoded_data = list(decoded_indexed_data) + list(decoded_non_indexed_data)
+    
+    # Create a dictionary of decoded data
+    event_data = {
+        'args': AttributeDict(dict(zip(
+            [input['name'] for input in event_abi['inputs']],
+            decoded_data
+        ))),
+        'event': event_abi['name'],
+        'logIndex': log_entry['logIndex'],
+        'transactionIndex': log_entry['transactionIndex'],
+        'transactionHash': log_entry['transactionHash'],
+        'address': log_entry['address'],
+        'blockHash': log_entry['blockHash'],
+        'blockNumber': log_entry['blockNumber'],
+    }
+    
+    return AttributeDict(event_data)
 
 
 normalize_topic_list = compose(remove_trailing_from_seq(remove_value=None),
