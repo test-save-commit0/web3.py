@@ -138,6 +138,19 @@ class AsyncGethTxPool(Module):
     https://geth.ethereum.org/docs/interacting-with-geth/rpc/ns-txpool
     """
     is_async = True
+    
+    @property
+    async def content(self) -> TxPoolContent:
+        return await self._content()
+
+    @property
+    async def inspect(self) -> TxPoolInspect:
+        return await self._inspect()
+
+    @property
+    async def status(self) -> TxPoolStatus:
+        return await self._status()
+
     _content: Method[Callable[[], Awaitable[TxPoolContent]]] = Method(RPC.
         txpool_content, is_property=True)
     _inspect: Method[Callable[[], Awaitable[TxPoolInspect]]] = Method(RPC.
@@ -151,6 +164,36 @@ class AsyncGethAdmin(Module):
     https://geth.ethereum.org/docs/interacting-with-geth/rpc/ns-admin
     """
     is_async = True
+
+    async def add_peer(self, enode: EnodeURI) -> bool:
+        return await self._add_peer(enode)
+
+    @property
+    async def datadir(self) -> str:
+        return await self._datadir()
+
+    @property
+    async def node_info(self) -> NodeInfo:
+        return await self._node_info()
+
+    @property
+    async def peers(self) -> List[Peer]:
+        return await self._peers()
+
+    async def start_http(self, host: str = 'localhost', port: int = 8545,
+                         cors: str = '', apis: str = 'eth,net,web3') -> bool:
+        return await self._start_http(host, port, cors, apis)
+
+    async def stop_http(self) -> bool:
+        return await self._stop_http()
+
+    async def start_ws(self, host: str = 'localhost', port: int = 8546,
+                       cors: str = '', apis: str = 'eth,net,web3') -> bool:
+        return await self._start_ws(host, port, cors, apis)
+
+    async def stop_ws(self) -> bool:
+        return await self._stop_ws()
+
     _add_peer: Method[Callable[[EnodeURI], Awaitable[bool]]] = Method(RPC.
         admin_addPeer, mungers=[default_root_munger])
     _datadir: Method[Callable[[], Awaitable[str]]] = Method(RPC.
@@ -174,6 +217,39 @@ class AsyncGethPersonal(Module):
     https://geth.ethereum.org/docs/interacting-with-geth/rpc/ns-personal
     """
     is_async = True
+
+    async def ec_recover(self, message: str, signature: HexStr) -> ChecksumAddress:
+        return await self._ec_recover(message, signature)
+
+    async def import_raw_key(self, private_key: str, passphrase: str) -> ChecksumAddress:
+        return await self._import_raw_key(private_key, passphrase)
+
+    @property
+    async def list_accounts(self) -> List[ChecksumAddress]:
+        return await self._list_accounts()
+
+    @property
+    async def list_wallets(self) -> List[GethWallet]:
+        return await self._list_wallets()
+
+    async def send_transaction(self, transaction: TxParams, passphrase: str) -> HexBytes:
+        return await self._send_transaction(transaction, passphrase)
+
+    async def sign(self, message: str, account: ChecksumAddress, password: Optional[str] = None) -> HexStr:
+        return await self._sign(message, account, password)
+
+    async def sign_typed_data(self, jsonMessage: Dict[str, Any], account: ChecksumAddress, password: str) -> HexStr:
+        return await self._sign_typed_data(jsonMessage, account, password)
+
+    async def new_account(self, password: str) -> ChecksumAddress:
+        return await self._new_account(password)
+
+    async def lock_account(self, account: ChecksumAddress) -> bool:
+        return await self._lock_account(account)
+
+    async def unlock_account(self, account: ChecksumAddress, passphrase: str, duration: Optional[int] = None) -> bool:
+        return await self._unlock_account(account, passphrase, duration)
+
     _ec_recover: Method[Callable[[str, HexStr], Awaitable[ChecksumAddress]]
         ] = Method(RPC.personal_ecRecover, mungers=[default_root_munger])
     _import_raw_key: Method[Callable[[str, str], Awaitable[ChecksumAddress]]
