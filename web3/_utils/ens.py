@@ -25,4 +25,9 @@ def contract_ens_addresses(contract: 'Contract', name_addr_pairs: Dict[str,
     with contract_ens_addresses(mycontract, [('resolve-as-1s.eth', '0x111...111')]):
         # any contract call or transaction in here would only resolve the above ENS pair
     """
-    pass
+    original_ens = contract.w3.ens
+    try:
+        contract.w3.ens = StaticENS(name_addr_pairs)
+        yield
+    finally:
+        contract.w3.ens = original_ens
