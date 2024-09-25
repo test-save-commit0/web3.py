@@ -15,7 +15,13 @@ def attrdict_middleware(make_request: Callable[[RPCEndpoint, Any], Any],
     Note: Accessing `AttributeDict` properties via attribute
         (e.g. my_attribute_dict.property1) will not preserve typing.
     """
-    pass
+    def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+        response = make_request(method, params)
+        if 'result' in response and isinstance(response['result'], dict):
+            response = assoc(response, 'result', AttributeDict.recursive(response['result']))
+        return cast(RPCResponse, response)
+    
+    return middleware
 
 
 async def async_attrdict_middleware(make_request: Callable[[RPCEndpoint,
@@ -26,4 +32,10 @@ async def async_attrdict_middleware(make_request: Callable[[RPCEndpoint,
     Note: Accessing `AttributeDict` properties via attribute
         (e.g. my_attribute_dict.property1) will not preserve typing.
     """
-    pass
+    async def middleware(method: RPCEndpoint, params: Any) -> RPCResponse:
+        response = await make_request(method, params)
+        if 'result' in response and isinstance(response['result'], dict):
+            response = assoc(response, 'result', AttributeDict.recursive(response['result']))
+        return cast(RPCResponse, response)
+    
+    return middleware
