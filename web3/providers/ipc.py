@@ -35,6 +35,11 @@ class PersistantSocket:
                 pass
             self.sock = None
 
+    def _open(self) ->socket.socket:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(self.ipc_path)
+        return sock
+
 
 class IPCProvider(JSONBaseProvider):
     logger = logging.getLogger('web3.providers.IPCProvider')
@@ -55,3 +60,44 @@ class IPCProvider(JSONBaseProvider):
 
     def __str__(self) ->str:
         return f'<{self.__class__.__name__} {self.ipc_path}>'
+
+    def make_request(self, method: RPCEndpoint, params: Any) -> RPCResponse:
+        request = self.encode_rpc_request(method, params)
+        with self._lock, self._socket as sock:
+            try:
+                sock.sendall(request)
+                response_raw = b""
+                with Timeout(self.timeout) as timeout:
+                    while True:
+                        try:
+                            response_raw += sock.recv(4096)
+                        except socket.timeout:
+                            timeout.sleep(0)
+                            continue
+                        if response_raw and response_raw[-1] == ord("\n"):
+                            break
+            except (ConnectionError, OSError) as e:
+                raise ConnectionError(f"Could not connect to IPC socket at path: {self.ipc_path}") from e
+        return self.decode_rpc_response(response_raw)
+
+    def isConnected(self) -> bool:
+        try:
+            with self._lock, self._socket as sock:
+                sock.sendall(self.encode_rpc_request("web3_clientVersion", []))
+                sock.recv(1)
+            return True
+        except (ConnectionError, OSError):
+            return False
+
+def get_default_ipc_path() -> str:
+    if sys.platform.startswith('darwin'):
+        return os.path.expanduser("~/Library/Ethereum/geth.ipc")
+    elif sys.platform.startswith('linux'):
+        return os.path.expanduser("~/.ethereum/geth.ipc")
+    elif sys.platform.startswith('win'):
+        return r"\\\\.\\pipe\\geth.ipc"
+    else:
+        raise ValueError(
+            "Unsupported platform '{0}'. Unable to determine "
+            "the default ipc path.".format(sys.platform)
+        )
