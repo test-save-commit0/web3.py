@@ -32,7 +32,26 @@ def construct_simple_cache_middleware(cache: SimpleCache=None,
         ``response`` and returns a boolean as to whether the response should be
         cached.
     """
-    pass
+    if cache is None:
+        cache = SimpleCache()
+    if rpc_whitelist is None:
+        rpc_whitelist = SIMPLE_CACHE_RPC_WHITELIST
+
+    def middleware(make_request: Callable[[RPCEndpoint, Any], RPCResponse], w3: "Web3") -> Callable[[RPCEndpoint, Any], RPCResponse]:
+        def middleware_fn(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in rpc_whitelist:
+                cache_key = generate_cache_key((method, params))
+                if cache_key in cache:
+                    return cache[cache_key]
+
+                response = make_request(method, params)
+                if should_cache_fn(method, params, response):
+                    cache[cache_key] = response
+                return response
+            else:
+                return make_request(method, params)
+        return middleware_fn
+    return middleware
 
 
 _simple_cache_middleware = construct_simple_cache_middleware()
@@ -57,7 +76,25 @@ def construct_time_based_cache_middleware(cache_class: Callable[..., Dict[
         ``response`` and returns a boolean as to whether the response should be
         cached.
     """
-    pass
+    cache = cache_class()
+
+    def middleware(make_request: Callable[[RPCEndpoint, Any], RPCResponse], w3: "Web3") -> Callable[[RPCEndpoint, Any], RPCResponse]:
+        def middleware_fn(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in rpc_whitelist:
+                cache_key = generate_cache_key((method, params))
+                if cache_key in cache:
+                    cached_response, timestamp = cache[cache_key]
+                    if time.time() - timestamp <= cache_expire_seconds:
+                        return cached_response
+
+                response = make_request(method, params)
+                if should_cache_fn(method, params, response):
+                    cache[cache_key] = (response, time.time())
+                return response
+            else:
+                return make_request(method, params)
+        return middleware_fn
+    return middleware
 
 
 _time_based_cache_middleware = construct_time_based_cache_middleware(
@@ -103,7 +140,52 @@ def construct_latest_block_based_cache_middleware(cache_class: Callable[...,
         a new block when the last seen latest block is older than the average
         block time.
     """
-    pass
+    cache = cache_class()
+    block_info: BlockInfoCache = {}
+
+    def middleware(make_request: Callable[[RPCEndpoint, Any], RPCResponse], w3: "Web3") -> Callable[[RPCEndpoint, Any], RPCResponse]:
+        def middleware_fn(method: RPCEndpoint, params: Any) -> RPCResponse:
+            if method in rpc_whitelist:
+                if "latest_block" not in block_info:
+                    _update_block_info_cache(make_request, block_info)
+                elif time.time() - block_info["avg_block_time_updated_at"] > block_info["avg_block_time"]:
+                    _update_block_info_cache(make_request, block_info)
+
+                latest_block = block_info["latest_block"]
+                cache_key = generate_cache_key((method, params, latest_block["hash"]))
+                
+                if cache_key in cache:
+                    return cache[cache_key]
+
+                response = make_request(method, params)
+                if should_cache_fn(method, params, response):
+                    cache[cache_key] = response
+                return response
+            else:
+                return make_request(method, params)
+        return middleware_fn
+
+    def _update_block_info_cache(make_request: Callable[[RPCEndpoint, Any], RPCResponse], block_info: BlockInfoCache) -> None:
+        latest_block = make_request("eth_getBlockByNumber", ["latest", False])
+        if "latest_block" in block_info:
+            prev_block_number = block_info["latest_block"]["number"]
+            blocks_diff = int(latest_block["number"], 16) - int(prev_block_number, 16)
+            if blocks_diff > 0:
+                block_time = (int(latest_block["timestamp"], 16) - int(block_info["latest_block"]["timestamp"], 16)) / blocks_diff
+                if AVG_BLOCK_TIME_KEY in block_info:
+                    block_info[AVG_BLOCK_TIME_KEY] = (block_info[AVG_BLOCK_TIME_KEY] * block_info.get(AVG_BLOCK_SAMPLE_SIZE_KEY, 0) + block_time) / (block_info.get(AVG_BLOCK_SAMPLE_SIZE_KEY, 0) + 1)
+                    block_info[AVG_BLOCK_SAMPLE_SIZE_KEY] = min(block_info.get(AVG_BLOCK_SAMPLE_SIZE_KEY, 0) + 1, average_block_time_sample_size)
+                else:
+                    block_info[AVG_BLOCK_TIME_KEY] = block_time
+                    block_info[AVG_BLOCK_SAMPLE_SIZE_KEY] = 1
+        else:
+            block_info[AVG_BLOCK_TIME_KEY] = default_average_block_time
+            block_info[AVG_BLOCK_SAMPLE_SIZE_KEY] = 1
+
+        block_info["latest_block"] = latest_block
+        block_info[AVG_BLOCK_TIME_UPDATED_AT_KEY] = time.time()
+
+    return middleware
 
 
 _latest_block_based_cache_middleware = (
