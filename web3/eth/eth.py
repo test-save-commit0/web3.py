@@ -38,13 +38,28 @@ class Eth(BaseEth):
         eth_maxPriorityFeePerGas, is_property=True)
 
     @property
-    def max_priority_fee(self) ->Wei:
+    def max_priority_fee(self) -> Wei:
         """
         Try to use eth_maxPriorityFeePerGas but, since this is not part
         of the spec and is only supported by some clients, fall back to
         an eth_feeHistory calculation with min and max caps.
         """
-        pass
+        try:
+            return self._max_priority_fee()
+        except (ValueError, MethodUnavailable):
+            # If eth_maxPriorityFeePerGas is not available, fall back to fee history calculation
+            block_count = 10
+            latest_block = self.get_block_number()
+            fee_history = self._fee_history(block_count, latest_block, [10])
+            
+            priority_fees = [int(fee[0], 16) for fee in fee_history['reward']]
+            average_priority_fee = sum(priority_fees) // len(priority_fees)
+            
+            # Apply min and max caps (you may want to adjust these values)
+            min_priority_fee = Wei(1_000_000_000)  # 1 Gwei
+            max_priority_fee = Wei(100_000_000_000)  # 100 Gwei
+            
+            return Wei(max(min_priority_fee, min(average_priority_fee, max_priority_fee)))
     _mining: Method[Callable[[], bool]] = Method(RPC.eth_mining,
         is_property=True)
     _syncing: Method[Callable[[], Union[SyncStatus, bool]]] = Method(RPC.
