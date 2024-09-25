@@ -65,3 +65,31 @@ class WebsocketProvider(JSONBaseProvider):
 
     def __str__(self) ->str:
         return f'WS connection {self.endpoint_uri}'
+
+    def make_request(self, method: RPCEndpoint, params: Any) -> RPCResponse:
+        request_data = self.encode_rpc_request(method, params)
+        response = self._loop.run_until_complete(self._make_request(request_data))
+        return self.decode_rpc_response(response)
+
+    async def _make_request(self, request_data: str) -> str:
+        async with self.conn as ws:
+            await ws.send(request_data)
+            response = await asyncio.wait_for(ws.recv(), timeout=self.websocket_timeout)
+        return response
+
+    def is_connected(self) -> bool:
+        return self._loop.run_until_complete(self._is_connected())
+
+    async def _is_connected(self) -> bool:
+        try:
+            async with self.conn as ws:
+                return ws.open
+        except Exception:
+            return False
+
+    def disconnect(self) -> None:
+        self._loop.run_until_complete(self._disconnect())
+
+    async def _disconnect(self) -> None:
+        if self.conn.ws and self.conn.ws.open:
+            await self.conn.ws.close()
