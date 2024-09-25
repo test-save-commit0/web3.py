@@ -16,6 +16,7 @@ from web3.exceptions import MethodUnavailable, OffchainLookup, TimeExhausted, To
 from web3.method import Method, default_root_munger
 from web3.providers import PersistentConnectionProvider
 from web3.types import ENS, BlockData, BlockIdentifier, BlockParams, CallOverride, CreateAccessListResponse, FeeHistory, FilterParams, LogReceipt, LogsSubscriptionArg, Nonce, SignedTx, SubscriptionType, SyncStatus, TxData, TxParams, TxReceipt, Wei, _Hash32
+from web3._utils.fee_utils import async_fee_history_priority_fee
 from web3.utils import async_handle_offchain_lookup
 if TYPE_CHECKING:
     from web3 import AsyncWeb3
@@ -42,13 +43,31 @@ class AsyncEth(BaseEth):
         eth_maxPriorityFeePerGas, is_property=True)
 
     @property
-    async def max_priority_fee(self) ->Wei:
+    async def max_priority_fee(self) -> Wei:
         """
         Try to use eth_maxPriorityFeePerGas but, since this is not part
         of the spec and is only supported by some clients, fall back to
         an eth_feeHistory calculation with min and max caps.
         """
-        pass
+        try:
+            return await self._max_priority_fee()
+        except (ValueError, MethodUnavailable):
+            return await self._suggest_max_priority_fee()
+
+    async def _suggest_max_priority_fee(self) -> Wei:
+        # Use fee history to estimate priority fee
+        fee_history = await self._fee_history(10, 'latest', [10])
+        latest_block = await self.get_block('latest')
+        base_fee = latest_block['baseFeePerGas']
+
+        # Calculate priority fee based on fee history
+        priority_fee = await async_fee_history_priority_fee(fee_history)
+
+        # Apply min and max caps
+        min_priority_fee = Wei(1_000_000_000)  # 1 gwei
+        max_priority_fee = Wei(2_000_000_000)  # 2 gwei
+        
+        return Wei(max(min(priority_fee, max_priority_fee), min_priority_fee))
     _mining: Method[Callable[[], Awaitable[bool]]] = Method(RPC.eth_mining,
         is_property=True)
     _syncing: Method[Callable[[], Awaitable[Union[SyncStatus, bool]]]
