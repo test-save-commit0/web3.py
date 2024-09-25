@@ -52,7 +52,14 @@ class RequestManager:
         Leaving w3 unspecified will prevent the middleware from resolving names.
         Documentation should remain in sync with these defaults.
         """
-        pass
+        return [
+            (gas_price_strategy_middleware, 'gas_price_strategy'),
+            (name_to_address_middleware(w3), 'name_to_address'),
+            (attrdict_middleware, 'attrdict'),
+            (validation_middleware, 'validation'),
+            (abi_middleware, 'abi'),
+            (buffered_gas_estimate_middleware, 'gas_estimate'),
+        ]
 
     @staticmethod
     def async_default_middlewares() ->List[Tuple[AsyncMiddleware, str]]:
@@ -60,7 +67,13 @@ class RequestManager:
         List the default async middlewares for the request manager.
         Documentation should remain in sync with these defaults.
         """
-        pass
+        return [
+            (async_gas_price_strategy_middleware, 'gas_price_strategy'),
+            (async_name_to_address_middleware, 'name_to_address'),
+            (async_attrdict_middleware, 'attrdict'),
+            (async_validation_middleware, 'validation'),
+            (async_buffered_gas_estimate_middleware, 'gas_estimate'),
+        ]
 
     def request_blocking(self, method: Union[RPCEndpoint, Callable[...,
         RPCEndpoint]], params: Any, error_formatters: Optional[Callable[...,
@@ -69,7 +82,31 @@ class RequestManager:
         """
         Make a synchronous request using the provider
         """
-        pass
+        response = self._make_request(method, params)
+        return self._process_response(response, error_formatters, null_result_formatters)
+
+    def _make_request(self, method: Union[RPCEndpoint, Callable[..., RPCEndpoint]], params: Any) ->RPCResponse:
+        if callable(method):
+            method = method(params)
+        middleware = self.middleware_onion.wrap(self.provider.make_request)
+        return middleware(method, params)
+
+    def _process_response(self, response: RPCResponse, error_formatters: Optional[Callable[..., Any]],
+                          null_result_formatters: Optional[Callable[..., Any]]) ->Any:
+        if "error" in response:
+            apply_error_formatters = error_formatters or (lambda x: x)
+            formatted_error = apply_error_formatters(response["error"])
+            raise ValueError(formatted_error)
+        elif "result" in response:
+            result = response["result"]
+            if result is None or result == "0x" or result == HexBytes("0x"):
+                if null_result_formatters:
+                    return null_result_formatters(result)
+                else:
+                    return None
+            return result
+        else:
+            raise BadResponseFormat("The response was in an unexpected format and unable to be parsed")
 
     async def coro_request(self, method: Union[RPCEndpoint, Callable[...,
         RPCEndpoint]], params: Any, error_formatters: Optional[Callable[...,
@@ -78,7 +115,14 @@ class RequestManager:
         """
         Coroutine for making a request using the provider
         """
-        pass
+        response = await self._make_async_request(method, params)
+        return self._process_response(response, error_formatters, null_result_formatters)
+
+    async def _make_async_request(self, method: Union[RPCEndpoint, Callable[..., RPCEndpoint]], params: Any) ->RPCResponse:
+        if callable(method):
+            method = method(params)
+        middleware = self.middleware_onion.wrap(self.provider.request)
+        return await middleware(method, params)
 
 
 class _AsyncPersistentMessageStream:
